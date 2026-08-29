@@ -84,7 +84,8 @@ def analyze_audio(audio_path: str) -> Dict:
         detector = get_detector()
         inf = detector.infer(waveform)
 
-        # 3. Risk engine
+        # 3. Risk engine — direct, no channel compensation (truthful)
+        # Do NOT adjust thresholds to make compressed genuine look bonafide; record actual model output.
         risk_engine = get_risk_engine()
         risk = risk_engine.evaluate(bonafide_score=inf["bonafide_score"])
 
