@@ -1,0 +1,15 @@
+# VIGIL AI — minimal CPU dependencies for Windows 11 + Python 3.11.9
+# Verified on Python 3.11.9, torch 2.13.0+cpu, torchaudio 2.11.0+cpu, numpy 2.4.6, soundfile 0.14.0
+# AUDIT NOTE (2026-08-29): Installed torch 2.13.0+cpu and torchaudio 2.11.0+cpu have mismatched minor versions
+# (2.13 vs 2.11) but Resample and AASIST inference verified OK. For fresh installs, prefer matched pair:
+#   torch==2.3.1 torchaudio==2.3.1  OR  torch==2.4.0 torchaudio==2.4.0
+# Keeping pinned versions as found on this Windows CPU host to avoid forced reinstall.
+torch==2.13.0
+torchaudio==2.11.0
+soundfile==0.14.0
+numpy==2.4.6
+# Compatibility: torch and torchaudio majors should match (both 2.x), minors should ideally match.
+# If you reinstall, use: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+# and ensure numpy <2 for torch <2.4 if you encounter _ARRAY_API errors (not observed here with numpy 2.4.6).
+# Optional but useful for mp3/m4a fallback
+# librosa not required — torchaudio + soundfile cover wav/flac/mp3/ogg

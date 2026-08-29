@@ -1,0 +1,2 @@
+# Root requirements — delegates to ai/requirements.txt
+-r ai/requirements.txt

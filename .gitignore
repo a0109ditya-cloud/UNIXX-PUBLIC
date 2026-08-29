@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+*.egg-info/
+# Audio temp
+*.tmp.wav
+# OS
+.DS_Store
+Thumbs.db
+# IDE
+.vscode/
+.idea/
+# Logs
+*.log
+# Keep fixtures but ignore large debug dumps
+tests/fixtures/debug_realtime.wav
+# Do NOT ignore AASIST checkpoint (required)
+!ai/aasist/models/weights/AASIST.pth
+!ai/aasist/models/weights/AASIST-L.pth
+
+ai/aasist/.git
