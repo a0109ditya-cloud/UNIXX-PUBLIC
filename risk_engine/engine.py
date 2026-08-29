@@ -80,24 +80,43 @@ class RiskEngine:
         Returns:
             {
                 "risk_score": int 0..100,
-                "risk_level": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL",
+                "risk_level": "LOW"|"MEDIUM"|"HIGH"|"CRITICAL"|"UNKNOWN",
                 "recommended_action": str,
                 "signals": {name: {score, weight, weighted}},
                 "explanation": str
             }
+        Deterministic fail-safe: if no usable/active signals (total_weight == 0),
+        returns UNKNOWN with REQUIRE_VERIFICATION — never auto-allow.
         """
         if signals is None:
             if bonafide_score is None:
                 raise ValueError("Either bonafide_score or signals must be provided")
             signals = [aasist_signal(bonafide_score, weight=self.weights.get("aasist", 1.0))]
 
-        # Weighted average: sum(weighted) / sum(weights)  — handles future 0-weight signals gracefully
+        # Weighted average: sum(weighted) / sum(weights)
         total_weight = sum(s.weight for s in signals)
         if total_weight == 0:
-            # No active signals — default to LOW risk but flag
-            risk_01 = 0.0
-        else:
-            risk_01 = sum(s.weighted() for s in signals) / total_weight
+            # Fail-safe: no usable signals — do NOT invent risk 0 -> LOW/ALLOW
+            # Deterministic UNKNOWN, require verification for any sensitive action
+            signals_dict = {
+                s.name: {
+                    "score": round(s.score, 4),
+                    "weight": s.weight,
+                    "weighted": round(s.weighted(), 4),
+                    "raw_value": s.raw_value,
+                    "details": s.details,
+                }
+                for s in signals
+            }
+            return {
+                "risk_score": 0,
+                "risk_level": "UNKNOWN",
+                "recommended_action": "REQUIRE_VERIFICATION - no usable signals, require strong verification before sensitive action",
+                "signals": signals_dict,
+                "explanation": "No usable/active signals (total_weight==0) -> UNKNOWN, REQUIRE_VERIFICATION (fail-safe, no auto-allow)",
+            }
+
+        risk_01 = sum(s.weighted() for s in signals) / total_weight
 
         # Clamp 0..1
         risk_01 = max(0.0, min(1.0, risk_01))

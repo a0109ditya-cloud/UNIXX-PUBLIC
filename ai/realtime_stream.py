@@ -4,8 +4,9 @@ VIGIL Realtime Microphone Layer — modular streaming on top of existing VIGIL p
 Reuse: analyze_waveform() (which reuses detector + risk engine + preprocessing).
 Does NOT duplicate AASIST logic, does NOT rewrite detector.
 
-Buffer: TARGET_NUM_SAMPLES (64600 @16kHz = 4.0375s) with sliding/overlapping windows.
-Default stride 2.0s (50% overlap) — configurable.
+Buffer: TARGET_NUM_SAMPLES (64600 @16kHz = 4.0375s) with approximately 50% overlapping windows.
+Default stride 2.0s (~50% overlap: 2.0/4.0375 ≈ 49.5% overlap, 32300 samples) — configurable.
+Actual overlap slightly less than exactly 50% due to 64600 not divisible as 4.0s; documented as approximately 50%.
 
 Modular for WebRTC: same VigilStream.push_chunk() can receive WebRTC call audio.
 CPU-only, handles mic permission/errors gracefully.
@@ -60,7 +61,8 @@ class VigilStream:
     ):
         self.window = window_samples
         self.sample_rate = sample_rate
-        # Default 50% overlap: stride = window // 2
+        # Default approximately 50% overlap: stride = window // 2 (32300 samples, 2.02s)
+        # Not exactly 50% for 4.0s window, hence documented as approximately 50% overlapping windows
         if stride_samples is None:
             stride_samples = window_samples // 2
         self.stride = stride_samples
@@ -190,7 +192,7 @@ def run_microphone(
     Capture local microphone and feed VigilStream with sliding windows.
     Displays latest prediction, model_score, risk_score, risk_level, recommended_action.
 
-    Window: 4.0375s (64600 @16k), Stride: 2.0s (50% overlap) by default.
+    Window: 4.0375s (64600 @16k), Stride: 2.0s (approximately 50% overlapping windows, 2.0/4.0375≈49.5%) by default.
     Processing latency: ~600-1700ms per window on CPU (measured).
     NOT millisecond-level — windowed near-real-time.
 
@@ -232,17 +234,28 @@ def run_microphone(
                   f"[window #{r.get('_window_index', '?')}]")
         stream.on_result = _print_result
 
-    # Queue for thread-safe handoff from audio callback to processing thread
-    audio_q: queue.Queue = queue.Queue()
+    # Bounded queue for back-pressure — prevents unbounded memory growth.
+    # Audio callback must never block; on overflow we drop oldest stale chunk and keep newest.
+    audio_q: queue.Queue = queue.Queue(maxsize=8)
 
     def audio_callback(indata, frames, time_info, status):
         if status:
             print(f"[VIGIL] Audio status: {status}", flush=True)
         # indata: (frames, channels) float32
         chunk = indata[:, 0].copy() if indata.ndim == 2 else indata.copy()
-        # indata is at device's samplerate; query actual rate
         # sounddevice InputStream will be opened at TARGET_SAMPLE_RATE, so sr is TARGET
-        audio_q.put(chunk)
+        try:
+            audio_q.put_nowait(chunk)
+        except queue.Full:
+            # Drop oldest stale chunk to preserve real-time responsiveness
+            try:
+                audio_q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                audio_q.put_nowait(chunk)
+            except queue.Full:
+                pass  # still full, drop current chunk
 
     # Use blocking InputStream with callback
     try:

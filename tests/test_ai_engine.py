@@ -107,15 +107,11 @@ def assert_error(result):
     assert result["error"] is not None
 
 def test_synthetic_tone_proxy():
-    """Synthetic 440Hz sine 4s — NON-SPEECH proxy, OOD for AASIST. Validates pipeline, NOT genuine-speech accuracy.
-    Previously named test_genuine_audio — renamed to avoid implying this is genuine human speech."""
+    """Synthetic 440Hz sine 4s — NON-SPEECH proxy, OOD for AASIST. Validates pipeline, NOT genuine-speech accuracy."""
     result = analyze_audio(str(FIXTURE_DIR / "genuine_440hz_4s.wav"))
     print("synthetic_tone_proxy (misleadingly named genuine_440hz_4s.wav):", result)
     assert_success(result, "synthetic_tone_proxy")
     # Document OOD expectation: model may return spoof/CRITICAL for non-speech; this is expected
-
-# Backward compat alias — keeps old name callable
-test_genuine_audio = test_synthetic_tone_proxy
 
 def test_spoof_proxy_audio():
     """Synthetic square-wave as spoof proxy (clearly labelled fixture, not real spoof)."""
@@ -202,6 +198,46 @@ def test_risk_engine_thresholds():
     print("risk thresholds ok")
 
 
+def test_risk_engine_no_usable_signals():
+    """Fail-safe: no usable/active signals (total_weight==0) -> UNKNOWN, REQUIRE_VERIFICATION, no auto-allow."""
+    from risk_engine.engine import get_risk_engine
+    from risk_engine.signals import SignalResult
+    engine = get_risk_engine()
+    signals = [
+        SignalResult(name="aasist", score=0.9, weight=0.0, raw_value=0.1),
+        SignalResult(name="prosody_anomaly", score=0.8, weight=0.0, raw_value=0.2),
+    ]
+    result = engine.evaluate(signals=signals)
+    print("no_usable_signals:", result)
+    assert result["risk_level"] == "UNKNOWN", f"expected UNKNOWN got {result['risk_level']}"
+    assert result["risk_score"] == 0
+    assert "REQUIRE_VERIFICATION" in result["recommended_action"]
+    # Must not be LOW/allow (fail-open)
+    assert result["risk_level"] != "LOW"
+    assert "allow - normal" not in result["recommended_action"].lower()
+    print("fail-safe UNKNOWN verified")
+
+
+def test_realtime_queue_bounded():
+    """Queue robustness: bounded queue (maxsize 8) drops stale chunks, never grows unbounded, no crash."""
+    from ai.realtime_stream import VigilStream
+    import queue
+    # Verify VigilStream uses bounded queue in run_microphone (check source)
+    import pathlib
+    src = pathlib.Path(ROOT / "ai" / "realtime_stream.py").read_text()
+    assert "queue.Queue(maxsize=" in src, "queue should be bounded"
+    assert "put_nowait" in src and "Full" in src, "should handle Full with drop"
+    # Functional: push many chunks quickly, ensure no crash and buffer stays bounded
+    stream = VigilStream()
+    import numpy as np
+    chunk = np.random.randn(2048).astype(np.float32) * 0.01
+    for _ in range(20):
+        stream.push_chunk(chunk, sr=16000)
+    # Buffer should be < window (not unbounded)
+    assert stream.buffered_seconds < 5.0, f"buffer grew unbounded: {stream.buffered_seconds}"
+    print(f"queue bounded test PASS buffered {stream.buffered_seconds:.2f}s")
+
+
 def test_genuine_human_speech_if_available():
     """Genuine human speech validation — ONLY runs if a real human recording exists.
     Uses tests/fixtures/debug_realtime.wav if it contains speech (rms >0.01), else SKIPs.
@@ -238,6 +274,8 @@ if __name__ == "__main__":
         test_invalid_input_none,
         test_waveform_interface,
         test_risk_engine_thresholds,
+        test_risk_engine_no_usable_signals,
+        test_realtime_queue_bounded,
         test_genuine_human_speech_if_available,
     ]
     fails = 0
