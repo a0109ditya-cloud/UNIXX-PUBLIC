@@ -210,7 +210,7 @@ wav slice: spoof, 2.11e-05, CRITICAL, 1160ms
 - **Fixed 4s window**: long calls not yet aggregated; streaming will need sliding-window + voting (planned).
 - **No calibration**: no Platt/isotonic scaling, no EER threshold tuning on deployment data. Thresholds are prototype.
 - **MP3/M4A fallback**: `torchaudio` may require `torchcodec` for some codecs; `soundfile` handles wav/flac reliably. MP3 support depends on torchcodec install.
-- **Silence is OOD**: near-silence `rms 0.00001` scored `bonafide 0.98 LOW` in debug — not meaningful; realtime now skips silence (`rms<0.001`).
+- **Silence is OOD**: near-silence `rms 0.00001` previously scored `bonafide 0.98 LOW` (now fixed to `SILENCE_DETECTED` UNKNOWN) — not meaningful; engine now returns `SILENCE_DETECTED` UNKNOWN; realtime skips (`rms<0.001`).
 - **No WebRTC/TTS/n8n/frontend** - per scope, deferred.
 
 ---

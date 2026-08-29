@@ -57,6 +57,28 @@ def analyze_audio(audio_path: str) -> Dict:
     try:
         # 1. Validation + preprocessing
         waveform = preprocess_audio(audio_path)
+        # Silence check: near-silence is OOD for AASIST and should not be scored as LOW/bonafide
+        # Realtime already skips, but file API should return UNKNOWN with clear guidance
+        if waveform.abs().max().item() < 0.001 or waveform.pow(2).mean().sqrt().item() < 0.001:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            return {
+                "prediction": "error",
+                "model_score": 0.0,
+                "spoof_score": 0.0,
+                "bonafide_logit": 0.0,
+                "spoof_logit": 0.0,
+                "logits": [0.0, 0.0],
+                "risk_score": 0,
+                "risk_level": "UNKNOWN",
+                "recommended_action": "reject - silence detected, request voiced speech (3-5s at normal volume)",
+                "signals": {},
+                "model": MODEL_NAME,
+                "model_version": MODEL_VERSION,
+                "status": "error",
+                "error": "Silence detected (max amplitude <0.001, rms <0.001) - not valid speech for anti-spoofing",
+                "error_code": "SILENCE_DETECTED",
+                "processing_time_ms": elapsed_ms,
+            }
 
         # 2. AASIST inference
         detector = get_detector()
@@ -161,6 +183,26 @@ def analyze_waveform(waveform, sample_rate: int) -> Dict:
         from .preprocessing import preprocess_waveform
 
         tensor = preprocess_waveform(waveform, sample_rate)
+        if tensor.abs().max().item() < 0.001 or tensor.pow(2).mean().sqrt().item() < 0.001:
+            elapsed_ms = int((time.time() - t0) * 1000)
+            return {
+                "prediction": "error",
+                "model_score": 0.0,
+                "spoof_score": 0.0,
+                "bonafide_logit": 0.0,
+                "spoof_logit": 0.0,
+                "logits": [0.0, 0.0],
+                "risk_score": 0,
+                "risk_level": "UNKNOWN",
+                "recommended_action": "reject - silence detected, request voiced speech",
+                "signals": {},
+                "model": MODEL_NAME,
+                "model_version": MODEL_VERSION,
+                "status": "error",
+                "error": "Silence detected (max <0.001) - not valid speech",
+                "error_code": "SILENCE_DETECTED",
+                "processing_time_ms": elapsed_ms,
+            }
         detector = get_detector()
         inf = detector.infer(tensor)
         risk_engine = get_risk_engine()
